@@ -1,0 +1,269 @@
+---
+title: "Distribution_Statistics"
+author: "Tim Monko"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r global_options, include = FALSE}
+library(tidyverse) # Includes ggplot2, tidyr, dplyr, stringr, readr, tibble, purrr, forcats
+library(svglite) # For exporting plots as .svg graphics to use as vector format
+library(broom) # Tidy's up some statistical outputs
+```
+
+```{r cache_settings, echo = FALSE}
+
+dir.name <- 'S1V1_RORBrn2EdU_Stats'
+dir.create(dir.name)
+
+knitr::opts_chunk$set(cache = TRUE, cache.path = paste0(dir.name, '-cache/')) # fig.path = 'Figs/' ## Will save figs into a separate file 
+```
+
+```{r data_management, echo = FALSE}
+# echo = FALSE prevents printing of mundance code (can always set a function clause to echo = TRUE, if needed), by default echo = TRUE
+
+wd.path <- getwd()
+file.paths <- list.files(path = wd.path, pattern = '\\.csv$')
+
+# Use all cols to identify certain columns as factors, without this it cannot generate the correct tibble 
+all.cols <- cols(
+  genotype = col_factor(),
+  slice = col_factor(),
+  pair = col_factor(),
+  region = col_factor()
+)
+
+# A function for csv bind - brings in each file to create one master tibble 
+csv_bind <- function(wd.path = getwd(), text.pattern, col.types){
+  bound <- do.call(rbind,
+                    lapply(list.files(path = wd.path, pattern = text.pattern),
+                           function(x) read_csv(x, col_types = col.types)))
+  return(bound)
+}
+
+# Use the function to call in files from getwd() [the default] based on the pattern 
+all.centers <- csv_bind(text.pattern = 'centers', col.types = all.cols)
+
+
+sum.cols <- cols(
+  genotype = col_factor(),
+  slice = col_factor(),
+  pair = col_factor()
+)
+
+summarize.cells<- csv_bind(text.pattern = 'cellmean', col.types = sum.cols)
+
+summarize.bins<- csv_bind(text.pattern = 'bins', col.types = sum.cols)
+
+```
+
+```{r interesting_data, echo = FALSE}
+
+# Change data to just cell counts in wide format, for ratiometric calculations
+summarized.wide <- summarize.cells %>% 
+  filter(region == 'S1') %>%
+  pivot_wider(id_cols = c(genotype, pair, region), names_from = slice, values_from = cells, names_prefix = 'cells_') # %>% replace(is.na(.),0) # NAs in the dataset become zero
+
+# Divide columns to produce ratiometric data 
+summarized.manip <- summarized.wide %>%
+  mutate(ROR_EdU = cells_5/cells_3) %>% # Brn2+EdU+/EdU+ cells (how many of the EdU cells are Brn2 labeled)
+  mutate(Brn2_EdU = cells_6/cells_3) %>%
+  mutate(ROREdU_Brn2EdU = cells_7/cells_8) %>%
+  mutate(ROR_Brn2 = cells_1/cells_2)
+
+# Filter out genotypes for comparisons 
+WT.summarized <- summarized.manip %>%
+  filter(genotype == 'WT') %>%
+  group_by(genotype, pair)
+CKO.summarized <- summarized.manip %>%
+  filter(genotype == 'CKO') %>%
+  group_by(genotype, pair)
+
+rel.CKO.summarized <- CKO.summarized[-1:-3]/WT.summarized[-1:-3] 
+rel.CKO.summarized <-rel.CKO.summarized %>% mutate(genotype = 'CKO') %>% mutate(pair = 1:(nrow(rel.CKO.summarized)))
+rel.WT.summarized <- WT.summarized[-1:-3]/WT.summarized[-1:-3] 
+rel.WT.summarized <-rel.WT.summarized %>% mutate(genotype = 'WT') %>% mutate(pair = 1:nrow(rel.WT.summarized))
+
+t.test(WT.summarized$ROR_EdU, CKO.summarized$ROR_EdU, paired = TRUE)
+t.test(WT.summarized$Brn2_EdU, CKO.summarized$Brn2_EdU, paired = TRUE)
+t.test(WT.summarized$ROREdU_Brn2EdU, CKO.summarized$ROREdU_Brn2EdU, paired = TRUE)
+t.test(WT.summarized$ROR_Brn2, CKO.summarized$ROR_Brn2, paired = TRUE)
+
+t.test(rel.WT.summarized$cells_1, rel.CKO.summarized$cells_1, paired = TRUE)
+t.test(rel.WT.summarized$cells_2, rel.CKO.summarized$cells_2, paired = TRUE)
+t.test(rel.WT.summarized$cells_3, rel.CKO.summarized$cells_3, paired = TRUE)
+t.test(rel.WT.summarized$cells_4, rel.CKO.summarized$cells_4, paired = TRUE)
+t.test(rel.WT.summarized$cells_5[-1], rel.CKO.summarized$cells_5[-1], paired = TRUE)
+t.test(rel.WT.summarized$cells_6[-1], rel.CKO.summarized$cells_6[-1], paired = TRUE)
+t.test(rel.WT.summarized$cells_7[-1], rel.CKO.summarized$cells_7[-1], paired = TRUE)
+t.test(rel.WT.summarized$cells_8[-1], rel.CKO.summarized$cells_8[-1], paired = TRUE)
+t.test(rel.WT.summarized$cells_9, rel.CKO.summarized$cells_9, paired = TRUE)
+
+
+# For distribution differences 
+manova.abs <- manova(cbind(abs_0, abs_1, abs_2, abs_3) ~ genotype, data = summarized.filter.slice)
+
+# MANOVA statistics
+summary(manova.abs, test = 'Pillai')
+
+#Univariate statistics
+summary.aov(manova.abs)
+
+```
+
+
+```{r plotting_means}
+cbp1 <- c("#999999", "#E69F00", "#56B4E9", "#009E73",
+          "#F0E442", "#0072B2", "#D55E00", "#CC79A7") # Colorblind pallette with grey first variable
+
+rel.summarized.plot <- rel.CKO.summarized %>%   # to subtract any desired rows 
+  mutate(pair = 1:7) %>%
+  mutate(Level = 'S1') %>%
+  filter(pair %in% c(2:7)) %>%
+  pivot_longer(cols = c(3,7,8), names_to = 'cells', values_to = 'rel.mean') %>%
+  group_by(Level, cells) %>%
+  mutate(avg.rel = mean(rel.mean, na.rm = TRUE)) %>%
+  mutate(sd.rel = sd(rel.mean)) %>%
+  ungroup()
+
+count.plot <- ggplot(rel.summarized.plot, aes(x = 0, y = rel.mean, colour = cells)) +
+  facet_wrap(~ Level, strip.position = 'bottom', nrow = 1) +
+  theme_classic(base_size = 13) +
+  geom_jitter(size = 1, shape = 1, position = position_jitterdodge(jitter.width = 0.5, dodge.width = 5)) +
+  geom_point(size = 5, shape = 13, stroke = 0.6, aes(y = avg.rel), position = position_dodge(5)) + 
+  geom_hline(aes(yintercept = 1), linetype = 'dashed') +
+  scale_colour_manual(values = cbp1, name = NULL, labels = c('EdU', 'ROR+EdU+', 'BRN2+EdU+', 'ROR+EdU+', 'BRN2+EdU+')) +
+  labs(y = 'Rel. Cell#, CKO/WT',
+       x = element_blank()) +
+  ylim(NA, 1.3) +
+  scale_x_discrete() +
+  guides(color = guide_legend(override.aes = list(size = 3)))
+
+count.plot
+
+ggsave(filename = paste0('EdUDoubles.png'), device = 'png', width = 6*1.32, height = 3*1.32, unit = 'cm', dpi = 1000)
+ggsave(filename = paste0(dir.name, 'EdUDoubles.svg'), device = 'svg', width = 7*1.32, height = 4.1*1.32, unit = 'cm')
+```
+
+```{r plotting_ratio stuff }
+
+summarized.wide <- summarize.cells %>% 
+  pivot_wider(id_cols = c(genotype, pair, region), names_from = slice, values_from = cells, names_prefix = 'cells_') # %>% replace(is.na(.),0) # NAs in the dataset become zero
+
+# Divide columns to produce ratiometric data 
+summarized.manip <- summarized.wide %>%
+  mutate(ROR_EdU = cells_7/cells_3) %>% # Brn2+EdU+/EdU+ cells (how many of the EdU cells are Brn2 labeled)
+  mutate(Brn2_EdU = cells_8/cells_3) %>%
+  mutate(ROREdU_Brn2EdU = cells_7/cells_8) %>%
+  mutate(ROR_Brn2 = cells_1/cells_2)
+
+ratio.summarized.plot <- summarized.manip %>%
+  filter(pair %in% c(2:7)) %>%
+  mutate(Genotype = factor(genotype, levels=c("WT", "CKO"))) %>%
+  pivot_longer(cols = c(ROREdU_Brn2EdU), names_to = 'cells', values_to = 'ratio') %>%
+  group_by(region, cells, genotype) %>%
+  mutate(avg.ratio = mean(ratio, na.rm = TRUE)) %>%
+  mutate(sd.ratio = sd(ratio)) %>%
+  ungroup()
+  
+
+
+#most different plot style 
+cells.lab <- c('ROR+EdU+/EdU+', 'Brn2+EdU+/EdU+', 'ROR+EdU+/Brn2+EdU+')
+names(cells.lab) <- c('ROR_EdU', 'Brn2_EdU', 'ROREdU_Brn2EdU') 
+
+
+ratio.plot <- ggplot(ratio.summarized.plot, aes(x = 0, y = ratio, shape = Genotype, colour = Genotype)) +
+  facet_wrap( ~ region,  strip.position = 'bottom') +
+  theme_classic(base_size = 13) +
+  geom_jitter(size = 1, position = position_jitterdodge(jitter.width = 0.5, dodge.width = 5)) +
+  geom_point(size = 5,  stroke = 0.6, aes(y = avg.ratio), position = position_dodge(5)) + 
+  #scale_colour_manual(values = cbp1, name = NULL, labels = c('ROR+EdU+/EdU+', 'Brn2+EdU+/EdU+', 'ROR+EdU+/ROR+', 'Brn2+EdU+/Brn2', 'BRN2+EdU+')) +
+  labs(y = 'ROR+EdU+/Brn2+EdU+',
+       x = element_blank()) +
+  #ylim(NA, 1.3) +
+  scale_x_discrete(labels = c('WT', 'cKO')) +
+  scale_shape_manual(values = c(7, 10)) +
+  scale_colour_manual(values = c("#000000", "blue"))
+  #guides(color = guide_legend(override.aes = list(size = 3)))
+
+ratio.plot
+
+ggsave(filename = paste0('ROREdUBrn2EdU-ratio.png'), device = 'png', width = 6*1.32, height = 4.1*1.32, unit = 'cm', dpi = 1000)
+ggsave(filename = paste0('ROREdUBrn2EdU-ratio.svg'), device = 'svg', width = 6*1.32, height = 4.1*1.32, unit = 'cm')
+
+```
+
+
+```{r distribution statistics}
+mx.right.wide <- summarized %>%
+  filter(region == 'S1') %>%
+  pivot_wider(id_cols = c(genotype, pair), names_from = slice, values_from = mx.abs.right, names_prefix = 'mxright_')
+
+WT.summarized <- mx.right.wide %>%
+  filter(genotype == 'WT') %>%
+  group_by(genotype, pair)
+CKO.summarized <- mx.right.wide %>%
+  filter(genotype == 'CKO') %>%
+  group_by(genotype, pair)
+
+t.test(WT.summarized$mxright_1, CKO.summarized$mxright_1, paired = TRUE)
+t.test(WT.summarized$mxright_2, CKO.summarized$mxright_2, paired = TRUE)
+t.test(WT.summarized$mxright_3, CKO.summarized$mxright_3, paired = TRUE)
+t.test(WT.summarized$mxright_5, CKO.summarized$mxright_5, paired = TRUE)
+t.test(WT.summarized$mxright_6, CKO.summarized$mxright_6, paired = TRUE)
+
+summarized.filter.slice <- summarized %>%
+  filter(region == 'S1') %>%
+  filter(slice == 3) 
+
+
+
+
+## ~ symbol calls funs(); . symbol calls matched var dbl
+per.summarized.filter.slice <- summarized.filter.slice %>%
+  mutate_at(vars(matches('abs')), ~ . / summarized.filter.slice$cells) %>%
+  mutate_at(vars(matches('abs')), ~replace(., is.na(.), 0))
+
+manova.abs <- manova(cbind(abs_0, abs_1,abs_2, abs_3, abs_4, abs_5, abs_6) ~ genotype, data = per.summarized.filter.slice)
+
+# MANOVA statistics
+summary(manova.abs, test = 'Pillai')
+
+#Univariate statistics
+summary.aov(manova.abs)
+
+
+
+binned.abs.plot <- ggplot(data = binned.abs, (aes(x = binned.mx.abs, y = count.abs, fill = genotype))) +
+  facet_wrap(~slice, strip.position = 'top', scales = 'free_y') +
+  theme_classic(base_size = 13) +
+  geom_col(position = position_dodge(preserve = 'single'), width = 5) 
+binned.abs.plot
+
+
+```
+
+```{r all_centers_plotting, echo = FALSE}
+
+centers.plot <- ggplot(data = all.centers.csvs, (aes(x = mx.abs.right, fill = genotype, family = 'sans'))) +
+  facet_wrap(~ slice, strip.position = 'top', scales = 'free_y') +
+  theme_classic(base_size = 13) +
+  geom_density(kernel = 'gaussian', adjust = 0.3, alpha = 0.5) + 
+  #geom_vline(data = summarized, aes(xintercept = mx.abs.right, color = genotype), linetype = 'dashed') +
+  scale_x_reverse()
+centers.plot
+
+
+binned.abs.plot <- ggplot(data = binned.abs.csvs, aes(x = binned.mx.abs, y = count.abs, fill = genotype, color = pair)) +
+  facet_wrap(~slice, strip.position = 'top', scales = 'free_y') +
+  theme_classic(base_size = 13) +
+  geom_col(position = position_dodge(preserve = 'single')) 
+binned.abs.plot
+
+abs.plot.2 <- ggplot(data = binned.abs.csvs, aes(x = binned.mx.abs, y = count.abs, color = pair, shape = genotype)) +
+  facet_wrap(~slice, strip.position = 'top', scales = 'free_y') +
+  theme_classic(base_size = 13) + 
+  geom_jitter()
+abs.plot.2
+```
