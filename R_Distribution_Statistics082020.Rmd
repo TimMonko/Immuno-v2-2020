@@ -6,7 +6,7 @@ output: html_document
 ---
 
 ```{r global_options, include = FALSE}
-library(tidyverse) # Includes ggplot2, tidyr, dplyr, stringr, readr, tibble, purrr, forcats
+library(tidyverse) # Includes ggplot2, tidyr, dply*r, stringr, readr, tibble, purrr, forcats
 library(svglite) # For exporting plots as .svg graphics to use as vector format
 library(broom) # Tidy's up some statistical outputs
 ```
@@ -113,8 +113,20 @@ summary.aov(manova.abs)
 
 
 ```{r plotting_means}
+
+# Old Palette which includes yellow 
 cbp1 <- c("#999999", "#E69F00", "#56B4E9", "#009E73",
-          "#F0E442", "#0072B2", "#D55E00", "#CC79A7") # Colorblind pallette with grey first variable
+          "#F0E442", "#0072B2", "#D55E00", "#CC79A7") # Colorblind pallette with grey first variable*
+
+
+# Custom Gray Palette by Tim (no yellow) and slightly reorganized. Originally from: http://jfly.iam.u-tokyo.ac.jp/color/  and http://www.cookbook-r.com/Graphs/Colors_(ggplot2)/#a-colorblind-friendly-palette
+cbTim <- c('#999999', '#E69F00', '#56B4E9', '#009E73', '#D55E00', '#0072B2', '#CC79A7')
+# To use for fills, add
+  scale_fill_manual(values=cbTim)
+# To use for line and point colors, add
+  scale_colour_manual(values=cbTim)
+
+
 
 rel.summarized.plot <- rel.CKO.summarized %>%   # to subtract any desired rows 
   mutate(pair = 1:7) %>%

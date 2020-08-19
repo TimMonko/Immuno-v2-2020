@@ -9,6 +9,7 @@ usebinningmethod = 1; //If you want pre-sized static bins, then 1
 usefreehandmethod = 1; //If you want to freehand bins, then 1 (use the hotkey 'b' to add each line to the ROI overlay)
 singlechannelbrightness = 0; //for adjust a single channel that you will also use for binning
 
+channelorder = "new=312" // If necessary to reorder channel due to alphabetical naming, otherwise leave as new=123
 rotate90left = 0; 
 multichannelcontrast = 0; // If you want to increase the contrast of a channel for binning purposes use this
 contrastchannel = 3; //The channel to get adjusted - this number is ignored if adjustbrightness = 0
@@ -50,6 +51,7 @@ for (i = 0; i < listlength; i) {
 	}
 
 	if (numberofchannels == 3) {
+		run("Arrange Channels...", channelorder);
 		Stack.setDisplayMode("color");
 		Stack.setChannel(1);
 		run("Cyan");
