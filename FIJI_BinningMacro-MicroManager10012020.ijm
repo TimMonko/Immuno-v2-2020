@@ -5,7 +5,7 @@
 // Variables for changing the code 
 numberofchannels = 3; // the number of images/channels in the stack 
 usebinningmethod = 1; //If you want pre-sized static bins, then 1 
-usefreehandmethod = 0; //If you want to freehand bins, then 1 (use the hotkey 'b' to add each line to the ROI overlay)
+usefreehandmethod = 1; //If you want to freehand bins, then 1 (use the hotkey 'b' to add each line to the ROI overlay)
 singlechannelbrightness = 0; //for adjust a single channel that you will also use for binning
 
 rotateFreehand = 0; 
@@ -24,13 +24,12 @@ list = getFileList(file);
 listlength = lengthOf(list);
 savefolder = getDirectory("Choose a Directory");
 
-for (i = 0; i < listlength; i++) {
-
-	open(file+list[i]);
+for (j = 0; j < listlength; j++) {
+	open(file+list[j]);
 	title = getTitle();
 	run("Make Composite", "display=Composite");
 	
-	for (n = 0; i < numberofchannels; i++) {
+	for (n = 0; n < numberofchannels; n++) {
 		Stack.setChannel(n);
 		resetMinAndMax();
 	}
@@ -71,12 +70,13 @@ for (i = 0; i < listlength; i++) {
 		run("Add Selection...");
 	}
 	//	i = i + numberofchannels; 
-	print(list[i]);
 	if (singlechannelbrightness == 1) {
 		resetMinAndMax();
 	}
 	rename(title); 
 	saveAs("tif", savefolder + title);
 	close();
+	print(list[j]);
+	print(j);
 }
 
